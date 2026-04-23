@@ -9,8 +9,9 @@ def _parse_closing_utc(utc_str: str | None) -> datetime | None:
     try:
         clean = utc_str.replace(" UTC", "").strip()
         dt = datetime.strptime(clean, "%Y-%m-%d %H:%M:%S")
+        # tzinfo=timezone.utc is required — isoformat() must produce "+00:00" for Supabase timestamptz
         return dt.replace(tzinfo=timezone.utc)
-    except Exception:
+    except ValueError:
         return None
 
 
@@ -36,12 +37,6 @@ def schedule_notifications(
     flips: list[dict],
     tools: list[dict],
 ) -> int:
-    supabase_client.table("scheduled_notifications")\
-        .delete()\
-        .eq("user_id", user_id)\
-        .eq("notified", False)\
-        .execute()
-
     all_picks = flips + tools
     if not all_picks:
         return 0
@@ -82,6 +77,8 @@ def schedule_notifications(
         })
 
     if rows:
+        supabase_client.table("scheduled_notifications") \
+            .delete().eq("user_id", user_id).eq("notified", False).execute()
         supabase_client.table("scheduled_notifications").insert(rows).execute()
 
     return len(rows)

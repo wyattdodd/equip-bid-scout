@@ -119,5 +119,28 @@ class TestScheduleNotifications(unittest.TestCase):
         self.assertEqual(len(args[0]["items"]), 2)
 
 
+class TestParseClosingUtc(unittest.TestCase):
+
+    def test_valid_utc_string(self):
+        from services.notifications import _parse_closing_utc
+        from datetime import timezone
+        dt = _parse_closing_utc("2099-12-31 23:00:00 UTC")
+        self.assertIsNotNone(dt)
+        self.assertEqual(dt.tzinfo, timezone.utc)
+        self.assertEqual(dt.year, 2099)
+
+    def test_none_returns_none(self):
+        from services.notifications import _parse_closing_utc
+        self.assertIsNone(_parse_closing_utc(None))
+
+    def test_empty_string_returns_none(self):
+        from services.notifications import _parse_closing_utc
+        self.assertIsNone(_parse_closing_utc(""))
+
+    def test_malformed_string_returns_none(self):
+        from services.notifications import _parse_closing_utc
+        self.assertIsNone(_parse_closing_utc("not a date"))
+
+
 if __name__ == "__main__":
     unittest.main()
