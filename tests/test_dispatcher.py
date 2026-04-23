@@ -40,6 +40,11 @@ class TestDispatcherBuildNtfyBody(unittest.TestCase):
         body = build_ntfy_body("123", _make_row()["items"])
         self.assertIn("$5.00", body)
 
+    def test_contains_est_resale(self):
+        from scripts.dispatcher import build_ntfy_body
+        body = build_ntfy_body("123", _make_row()["items"])
+        self.assertIn("$80-$200", body)
+
     def test_contains_auction_url(self):
         from scripts.dispatcher import build_ntfy_body
         body = build_ntfy_body("123", _make_row()["items"])

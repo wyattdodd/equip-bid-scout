@@ -43,8 +43,12 @@ def post_ntfy(topic: str, body: str) -> None:
 
 
 def main() -> None:
-    url = os.environ["SUPABASE_URL"]
-    key = os.environ["SUPABASE_SERVICE_KEY"]
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not url:
+        sys.exit("SUPABASE_URL environment variable is not set")
+    if not key:
+        sys.exit("SUPABASE_SERVICE_KEY environment variable is not set")
     supabase = create_client(url, key)
 
     now = datetime.now(timezone.utc).isoformat()
@@ -63,16 +67,16 @@ def main() -> None:
 
     notified_ids = []
     for row in rows:
-        auction_id = row["auction_id"]
-        topic = row["ntfy_topic"]
-        items = row["items"]
         try:
+            auction_id = row["auction_id"]
+            topic = row["ntfy_topic"]
+            items = row["items"]
             body = build_ntfy_body(auction_id, items)
             post_ntfy(topic, body)
             notified_ids.append(row["id"])
             print(f"[OK] auction {auction_id} → {topic} ({len(items)} item(s))")
         except Exception as e:
-            print(f"[ERROR] auction {auction_id}: {e}")
+            print(f"[ERROR] row {row.get('id', '?')}: {e}")
 
     if notified_ids:
         sent_at = datetime.now(timezone.utc).isoformat()
