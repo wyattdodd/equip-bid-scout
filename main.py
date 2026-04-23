@@ -87,9 +87,24 @@ def main():
     with open(WATCHLIST_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-    # ── Step 3: Schedule ──────────────────────────────────────────────────────
+    # ── Step 3: Push watchlist to GitHub (triggers cloud alerts) ─────────────
+    print("\nPushing watchlist to GitHub...")
+    try:
+        subprocess.run(["git", "add", str(WATCHLIST_PATH)], check=True)
+        diff = subprocess.run(["git", "diff", "--cached", "--quiet"])
+        if diff.returncode != 0:
+            subprocess.run(["git", "commit", "-m", "Update watchlist"], check=True)
+            subprocess.run(["git", "push"], check=True)
+            print("Pushed. GitHub Actions will alert your phone ~30 min before close.")
+        else:
+            print("Watchlist unchanged — no push needed.")
+    except subprocess.CalledProcessError as e:
+        print(f"[WARN] Could not push watchlist: {e}")
+        print("Run 'git push' manually to enable cloud alerts.")
+
+    # ── Step 4: Also schedule local alerts (fallback if PC stays on) ──────────
     print("\n" + "=" * 68)
-    print("   SCHEDULING PHONE ALERTS")
+    print("   SCHEDULING LOCAL ALERTS (backup)")
     print("=" * 68 + "\n")
 
     subprocess.run([sys.executable, str(SCHEDULE_SCRIPT)])

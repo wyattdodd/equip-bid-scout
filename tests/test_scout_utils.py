@@ -50,8 +50,12 @@ class TestParseClosingSpan(unittest.TestCase):
         span = _make_span(title_attr=None, text="04/24/2026 07:05 pm")
         closing, closing_utc = _parse_closing_span(span)
         self.assertIsNotNone(closing_utc)
-        self.assertIn("2026-04-24", closing_utc)
-        self.assertIn("LOCAL", closing_utc)
+        self.assertTrue(closing_utc.endswith(" UTC"), f"Expected UTC suffix, got: {closing_utc}")
+        # Verify it parses as a valid datetime
+        import datetime
+        dt_str = closing_utc.replace(" UTC", "")
+        dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+        self.assertIsNotNone(dt)
 
 
 class TestSaveWatchlist(unittest.TestCase):

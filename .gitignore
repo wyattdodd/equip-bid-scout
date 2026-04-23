@@ -1,6 +1,3 @@
-# Generated at runtime — not source
-watchlist.json
-
 # Python bytecode
 __pycache__/
 *.pyc

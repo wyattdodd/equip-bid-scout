@@ -36,7 +36,7 @@ NEARBY_FILTER = [
 ]
 
 MAX_AUCTIONS = 10   # Auctions to scan per run
-TOP_N = 5           # Final picks returned
+TOP_N = 10          # Final picks returned
 WATCHLIST_PATH = "watchlist.json"
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -291,7 +291,9 @@ def _parse_closing_span(span) -> tuple[str, str | None]:
         return closing, raw
     try:
         dt = datetime.datetime.strptime(closing, _LOCAL_FMT)
-        return closing, dt.strftime("%Y-%m-%d %H:%M:%S LOCAL")
+        local_tz = datetime.datetime.now().astimezone().tzinfo
+        dt_utc = dt.replace(tzinfo=local_tz).astimezone(datetime.timezone.utc)
+        return closing, dt_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
     except ValueError:
         return closing, None
 
