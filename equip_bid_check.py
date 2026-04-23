@@ -93,7 +93,9 @@ def main():
             print(f"[ERROR] watchlist.json is not valid JSON: {e}")
             sys.exit(1)
 
-    picks = data.get("picks", [])
+    picks = data.get("flips", []) + data.get("tools", [])
+    if not picks:
+        picks = data.get("picks", [])  # backwards compat with old watchlist format
     if not picks:
         print("Watchlist is empty.")
         sys.exit(0)

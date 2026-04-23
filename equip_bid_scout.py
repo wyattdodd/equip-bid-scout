@@ -35,8 +35,9 @@ NEARBY_FILTER = [
     "wichita",
 ]
 
-MAX_AUCTIONS = 10   # Auctions to scan per run
-TOP_N = 10          # Final picks returned
+MAX_AUCTIONS = 10    # Auctions to scan per run
+TOP_FLIPS = 5        # Max flip picks returned
+TOP_TOOLS = 5        # Max tool picks returned (can be fewer if not found)
 WATCHLIST_PATH = "watchlist.json"
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -64,13 +65,18 @@ EXCLUSION_PHRASES = [
     "camera strap", "camera bag", "lens cap",
     # Headphone/speaker accessories
     "headphone stand", "speaker stand", "earbud tips",
+    # Replacement parts / accessories (not the actual item)
+    "actuator", "rmt motor", "lift motor",
+    "replacement legs", "furniture legs", "sofa legs", "couch legs",
+    "rv seat", "seat cover", "outdoor cushion", "chair cushion",
+    "patio cushion", "cushion set", "cushion replacement",
     # Condition flags
     "missing", "parts only", "for parts", "not working", "as is",
     "damaged", "cracked screen",
 ]
 
 # Minimum resale value to bother recommending (filters out cheap flip-unworthy items)
-MIN_RESALE_VALUE = 50.0
+MIN_RESALE_VALUE = 75.0
 
 INTEREST_KEYWORDS = [
     # Power & hand tools
@@ -87,6 +93,9 @@ INTEREST_KEYWORDS = [
     "monitor", "projector", "amplifier", "receiver", "subwoofer",
     "soundbar", "drone", "gopro", "kindle", "apple", "sony", "lg",
     "bose", "beats", "macbook", "chromebook", "graphics card",
+    # Exercise / personal transport
+    "treadmill", "walking pad", "scooter", "hoverboard", "elliptical",
+    "stationary bike", "exercise bike",
     # Furniture
     "sofa", "couch", "chair", "recliner", "sectional", "ottoman",
     "desk", "dresser", "nightstand", "bed frame", "headboard",
@@ -96,6 +105,17 @@ INTEREST_KEYWORDS = [
     "outdoor furniture", "teak", "restoration hardware", "pottery barn",
     "west elm", "ashley", "la-z-boy", "lazboy", "natuzzi",
     "ethan allen", "lane furniture", "bassett",
+]
+
+# Keywords that identify tools the user might personally want (subset of INTEREST_KEYWORDS).
+# Items matching any of these go in the "For You — Tools" list instead of Flips.
+TOOL_KEYWORDS = [
+    "drill", "saw", "dewalt", "milwaukee", "makita", "ryobi",
+    "craftsman", "wrench", "socket", "ratchet", "compressor", "welder",
+    "grinder", "sander", "router", "impact driver", "impact wrench",
+    "circular saw", "jigsaw", "miter saw", "planer", "lathe",
+    "workbench", "toolbox", "tool chest", "nail gun", "multimeter",
+    "oscillating tool", "oscillating multi",
 ]
 
 # ── Brand / item value table ──────────────────────────────────────────────────
@@ -173,11 +193,9 @@ BRAND_VALUE = {
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def _save_watchlist_to(picks: list[dict], path: str) -> None:
-    """Write picks to a watchlist JSON file, stripping internal scoring keys."""
-    clean = []
-    for p in picks:
-        clean.append({
+def _clean_picks(picks: list[dict]) -> list[dict]:
+    return [
+        {
             "title":         p.get("title", ""),
             "current_bid":   p.get("current_bid", "$0.00"),
             "est_resale":    p.get("_resale_est", "Unknown"),
@@ -186,18 +204,23 @@ def _save_watchlist_to(picks: list[dict], path: str) -> None:
             "url":           p.get("url", ""),
             "auction_id":    p.get("auction_id", ""),
             "auction_title": p.get("auction_title", ""),
-        })
+        }
+        for p in picks
+    ]
+
+
+def _save_watchlist_to(flips: list[dict], tools: list[dict], path: str) -> None:
     data = {
         "generated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "picks": clean,
+        "flips": _clean_picks(flips),
+        "tools": _clean_picks(tools),
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 
-def save_watchlist(picks: list[dict]) -> None:
-    """Save picks to the default watchlist path defined in config."""
-    _save_watchlist_to(picks, WATCHLIST_PATH)
+def save_watchlist(flips: list[dict], tools: list[dict]) -> None:
+    _save_watchlist_to(flips, tools, WATCHLIST_PATH)
 
 
 def parse_dollar(text: str) -> float:
@@ -398,6 +421,27 @@ def get_auction_items(auction_id: str, auction_closing: str, auction_closing_utc
     return items
 
 
+def _is_tool(item: dict) -> bool:
+    t = item["title"].lower()
+    return any(kw in t for kw in TOOL_KEYWORDS)
+
+
+def _print_section(header: str, picks: list[dict]) -> None:
+    print("=" * 68)
+    print(f"   {header}")
+    print("=" * 68)
+    if not picks:
+        print("  (none found this run)")
+    for i, p in enumerate(picks, 1):
+        pct_line = f"  ({p['_pct'] * 100:.0f}% of resale)" if "_pct" in p else ""
+        print(f"\n#{i}  {p['title'][:78]}")
+        print(f"    Current Bid:   {p['current_bid']}")
+        print(f"    Est. Resale:   {p.get('_resale_est', 'Unknown')}{pct_line}")
+        print(f"    Closes:        {p['closing']}")
+        print(f"    Link:          {p['url']}")
+    print()
+
+
 def main():
     print("Scanning Equip-Bid for arbitrage opportunities near Wichita, KS...\n")
 
@@ -420,7 +464,7 @@ def main():
                 f"  {a['location']:<42} "
                 f"{len(items):>3} matching lots  |  closes {a['closing']}"
             )
-            time.sleep(0.5)  # polite crawl delay
+            time.sleep(0.5)
         except Exception as e:
             print(f"  [skipped] {a['title'][:55]}  ({e})")
 
@@ -437,42 +481,25 @@ def main():
             scored.append((s, item))
 
     scored.sort(key=lambda x: x[0], reverse=True)
-    picks = [item for _, item in scored[:TOP_N]]
 
-    # If we couldn't score enough items, pad with unscored low-bid category matches
-    if len(picks) < TOP_N:
-        unscored = [it for it in all_items if "_pct" not in it]
-        unscored.sort(key=lambda x: parse_dollar(x["current_bid"]))
-        for it in unscored:
-            if len(picks) >= TOP_N:
-                break
-            it["_resale_est"] = "Unknown (no brand match)"
-            picks.append(it)
+    # Split into tools (personal interest) and everything else (flips)
+    tool_scored = [(s, it) for s, it in scored if _is_tool(it)]
+    flip_scored = [(s, it) for s, it in scored if not _is_tool(it)]
 
-    total_scoreable = len(scored)
+    tool_picks = [it for _, it in tool_scored[:TOP_TOOLS]]
+    flip_picks = [it for _, it in flip_scored[:TOP_FLIPS]]
+
     print(
         f"\nAnalyzed {len(all_items)} relevant items, "
-        f"{total_scoreable} with estimable resale value.\n"
+        f"{len(scored)} with estimable resale value "
+        f"({len(tool_scored)} tools, {len(flip_scored)} flips).\n"
     )
-    print("=" * 68)
-    print("   TOP ARBITRAGE PICKS — EQUIP-BID NEAR WICHITA, KS")
-    print("=" * 68)
 
-    for i, p in enumerate(picks, 1):
-        pct_line = ""
-        if "_pct" in p:
-            pct_line = f"  ({p['_pct'] * 100:.0f}% of resale)"
+    _print_section("TOP FLIPS — EQUIP-BID NEAR WICHITA, KS", flip_picks)
+    _print_section("FOR YOU — TOOLS", tool_picks)
 
-        print(f"\n#{i}  {p['title'][:78]}")
-        print(f"    Current Bid:   {p['current_bid']}")
-        print(f"    Est. Resale:   {p.get('_resale_est', 'Unknown')}{pct_line}")
-        print(f"    Closes:        {p['closing']}")
-        print(f"    Link:          {p['url']}")
-
-    print("\n" + "=" * 68)
-
-    save_watchlist(picks)
-    print(f"\nWatchlist saved to {WATCHLIST_PATH}")
+    save_watchlist(flip_picks, tool_picks)
+    print(f"Watchlist saved to {WATCHLIST_PATH}")
     print("Run 'py main.py' to review picks and push to GitHub for cloud alerts.")
 
 
