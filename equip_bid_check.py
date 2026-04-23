@@ -56,6 +56,32 @@ def build_body(auction_id: str, picks: list[dict]) -> str:
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test", action="store_true",
+                        help="Send a test notification immediately, ignoring time window")
+    args = parser.parse_args()
+
+    if args.test:
+        body = "This is a test notification from equip-bid-scout.\nIf you see this, ntfy.sh is working."
+        try:
+            resp = requests.post(
+                f"https://ntfy.sh/{NTFY_TOPIC}",
+                data=body.encode("utf-8"),
+                headers={
+                    "Title": "Equip-Bid test notification",
+                    "Priority": "default",
+                    "Tags": "white_check_mark",
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            print(f"[OK] Test notification sent to ntfy.sh topic '{NTFY_TOPIC}'")
+        except Exception as e:
+            print(f"[ERROR] ntfy.sh POST failed: {e}")
+            sys.exit(1)
+        sys.exit(0)
+
     if not WATCHLIST_PATH.exists():
         print("No watchlist.json — nothing to check.")
         sys.exit(0)
