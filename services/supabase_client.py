@@ -1,3 +1,8 @@
+"""
+services/supabase_client.py
+Supabase client factory and authentication guard for use by all Streamlit pages.
+"""
+
 import streamlit as st
 from supabase import create_client, Client
 
@@ -17,4 +22,9 @@ def require_auth() -> str:
         st.warning("Please log in to continue.")
         st.page_link("streamlit_app.py", label="Go to Login →")
         st.stop()
-    return st.session_state["user_id"]
+    user_id = st.session_state.get("user_id")
+    if not user_id:
+        st.warning("Session expired. Please log in again.")
+        st.page_link("streamlit_app.py", label="Go to Login →")
+        st.stop()
+    return user_id
