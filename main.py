@@ -3,8 +3,8 @@
 main.py
 Orchestrates the full Equip-Bid workflow:
   1. Scout  — scrape and score picks
-  2. Review — optionally reject picks before scheduling
-  3. Schedule — register Task Scheduler phone alerts
+  2. Review — optionally reject picks
+  3. Push   — commit watchlist.json to GitHub (triggers cloud alerts via GitHub Actions)
 
 Usage:
     py main.py
@@ -17,7 +17,6 @@ from pathlib import Path
 
 WATCHLIST_PATH = Path(__file__).parent / "watchlist.json"
 SCOUT_SCRIPT   = Path(__file__).parent / "equip_bid_scout.py"
-SCHEDULE_SCRIPT = Path(__file__).parent / "schedule_watches.py"
 
 
 def prompt_rejection(picks: list[dict]) -> list[dict]:
@@ -102,12 +101,6 @@ def main():
         print(f"[WARN] Could not push watchlist: {e}")
         print("Run 'git push' manually to enable cloud alerts.")
 
-    # ── Step 4: Also schedule local alerts (fallback if PC stays on) ──────────
-    print("\n" + "=" * 68)
-    print("   SCHEDULING LOCAL ALERTS (backup)")
-    print("=" * 68 + "\n")
-
-    subprocess.run([sys.executable, str(SCHEDULE_SCRIPT)])
 
 
 if __name__ == "__main__":
