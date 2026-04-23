@@ -129,7 +129,7 @@ def main():
 
         if register_job(auction_id, trigger_local):
             time_display = trigger_local.strftime("%I:%M %p")
-            print(f"  [OK] EquipBid-{auction_id} → alert at {time_display}  ({auction_title[:50]})")
+            print(f"  [OK] EquipBid-{auction_id} -> alert at {time_display}  ({auction_title[:50]})")
             scheduled += 1
         else:
             skipped += 1
