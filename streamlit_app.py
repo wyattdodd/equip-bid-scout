@@ -22,11 +22,14 @@ else:
             try:
                 client = get_client()
                 resp = client.auth.sign_in_with_password({"email": email, "password": password})
-                st.session_state.access_token = resp.session.access_token
-                st.session_state.refresh_token = resp.session.refresh_token
-                st.session_state.user_id = resp.user.id
-                st.session_state.user_email = resp.user.email
-                st.rerun()
+                if resp.session is None:
+                    st.error("Login failed: email confirmation may be required. Check your inbox.")
+                else:
+                    st.session_state.access_token = resp.session.access_token
+                    st.session_state.refresh_token = resp.session.refresh_token
+                    st.session_state.user_id = resp.user.id
+                    st.session_state.user_email = resp.user.email
+                    st.rerun()
             except Exception as e:
                 st.error(f"Login failed: {e}")
 

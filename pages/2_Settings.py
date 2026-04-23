@@ -46,7 +46,7 @@ notify_minutes = st.slider(
 if st.button("Save Settings", type="primary"):
     interest_keywords = [kw.strip() for kw in interest_text.splitlines() if kw.strip()]
     tool_keywords = [kw.strip() for kw in tool_text.splitlines() if kw.strip()]
-    client.table("user_settings").upsert({
+    res = client.table("user_settings").upsert({
         "user_id": user_id,
         "city": city.strip().lower(),
         "interest_keywords": interest_keywords,
@@ -54,4 +54,7 @@ if st.button("Save Settings", type="primary"):
         "ntfy_topic": ntfy_topic.strip(),
         "notify_minutes": notify_minutes,
     }).execute()
-    st.success("Settings saved.")
+    if res.data:
+        st.success("Settings saved.")
+    else:
+        st.error("Failed to save settings. Please try again.")

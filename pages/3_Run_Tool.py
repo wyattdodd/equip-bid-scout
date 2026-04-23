@@ -27,13 +27,13 @@ if not settings.get("interest_keywords"):
     st.page_link("pages/2_Settings.py", label="Go to Settings →")
     st.stop()
 
-st.caption(f"City: **{settings['city']}** | ntfy topic: **{settings['ntfy_topic']}** | Notify **{settings.get('notify_minutes', 30)} min** before close")
+st.caption(f"City: **{settings.get('city', '')}** | ntfy topic: **{settings['ntfy_topic']}** | Notify **{settings.get('notify_minutes', 30)} min** before close")
 
 if st.button("Run Scout", type="primary"):
     with st.spinner("Scanning equip-bid.com — this takes 30–60 seconds..."):
         try:
             results = run_scout(
-                city_filter=[settings["city"]],
+                city_filter=[settings.get("city", "")],
                 interest_keywords=settings["interest_keywords"],
                 tool_keywords=settings.get("tool_keywords") or [],
             )
@@ -43,6 +43,8 @@ if st.button("Run Scout", type="primary"):
 
     flips = results.get("flips", [])
     tools = results.get("tools", [])
+    if results.get("errors"):
+        st.warning(f"{results['errors']} auction(s) failed to scrape and were skipped.")
 
     with st.expander(f"Flips — {len(flips)} found", expanded=True):
         if not flips:
@@ -70,7 +72,7 @@ if st.button("Run Scout", type="primary"):
         "user_id": user_id,
         "flips": flips,
         "tools": tools,
-    }).execute()
+    }).execute()  # result not critical — UI still shows results even if history write fails
 
     count = schedule_notifications(
         client,

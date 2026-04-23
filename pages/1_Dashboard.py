@@ -24,7 +24,8 @@ if runs.data:
     run = runs.data[0]
     flips = run.get("flips") or []
     tools = run.get("tools") or []
-    ts = run["generated_at"][:16].replace("T", " ")
+    from datetime import datetime, timezone
+    ts = datetime.fromisoformat(run["generated_at"].replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M")
     st.markdown(f"**{ts} UTC** — {len(flips)} flip(s), {len(tools)} tool(s) found")
 else:
     st.write("No runs yet.")
@@ -43,7 +44,8 @@ pending = (
 
 if pending.data:
     for row in pending.data:
-        notify_time = row["notify_at"][:16].replace("T", " ")
+        from datetime import datetime
+        notify_time = datetime.fromisoformat(row["notify_at"].replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M")
         title = (row.get("auction_title") or row["auction_id"])[:60]
         st.markdown(f"- **{title}** — notify at {notify_time} UTC")
 else:
