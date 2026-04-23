@@ -473,7 +473,7 @@ def main():
 
     save_watchlist(picks)
     print(f"\nWatchlist saved to {WATCHLIST_PATH}")
-    print("Run 'py schedule_watches.py' to set phone alerts for these picks.")
+    print("Run 'py main.py' to review picks and push to GitHub for cloud alerts.")
 
 
 if __name__ == "__main__":
