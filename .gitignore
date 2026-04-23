@@ -1,0 +1,17 @@
+# Generated at runtime — not source
+watchlist.json
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code
+.vscode/
+
+# Environment / secrets
+.env
+.env.*
+
+# Claude Code internal
+.claude/
