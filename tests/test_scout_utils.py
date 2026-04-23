@@ -2,18 +2,14 @@
 import sys
 import os
 import unittest
-import json
-import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from bs4 import BeautifulSoup
-from equip_bid_scout import _parse_closing_span
-from equip_bid_scout import _save_watchlist_to
+from services.scout import _parse_closing_span, _clean_pick, _is_tool
 
 
 def _make_span(title_attr=None, text="5 hours 30 min"):
-    """Build a real BeautifulSoup span element for testing."""
     title_html = f' title="{title_attr}"' if title_attr is not None else ""
     html = f"<span{title_html}>{text}</span>"
     return BeautifulSoup(html, "html.parser").find("span")
@@ -51,102 +47,71 @@ class TestParseClosingSpan(unittest.TestCase):
         closing, closing_utc = _parse_closing_span(span)
         self.assertIsNotNone(closing_utc)
         self.assertTrue(closing_utc.endswith(" UTC"), f"Expected UTC suffix, got: {closing_utc}")
-        # Verify it parses as a valid datetime
         import datetime
         dt_str = closing_utc.replace(" UTC", "")
         dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
         self.assertIsNotNone(dt)
 
 
-class TestSaveWatchlist(unittest.TestCase):
+class TestCleanPick(unittest.TestCase):
 
-    def _make_pick(self, title="DeWalt Drill", bid="$5.00", resale="$80-$200 (brand: dewalt)",
-                   closing="5 hours", closing_utc="2026-04-22 20:00:00 UTC",
-                   url="https://www.equip-bid.com/auction/123/item/456",
-                   auction_id="123", auction_title="Wichita Tools Auction"):
+    def _make_scored_item(self):
         return {
-            "title": title,
-            "current_bid": bid,
-            "_resale_est": resale,
-            "closing": closing,
-            "closing_utc": closing_utc,
-            "url": url,
-            "auction_id": auction_id,
-            "auction_title": auction_title,
+            "title": "DeWalt Drill Kit",
+            "current_bid": "$5.00",
+            "_resale_est": "$80-$200 (brand: dewalt)",
+            "closing": "5 hours",
+            "closing_utc": "2026-04-22 20:00:00 UTC",
+            "url": "https://www.equip-bid.com/auction/123/item/456",
+            "auction_id": "123",
+            "auction_title": "Wichita Tools",
+            "_pct": 0.05,
+            "_ref": 140.0,
         }
 
-    def test_watchlist_written_to_disk(self):
-        picks = [self._make_pick()]
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
-            path = f.name
-        try:
-            _save_watchlist_to(picks, path)
-            with open(path) as f:
-                data = json.load(f)
-            self.assertIn("picks", data)
-            self.assertEqual(len(data["picks"]), 1)
-        finally:
-            os.unlink(path)
+    def test_strips_internal_scoring_keys(self):
+        result = _clean_pick(self._make_scored_item())
+        self.assertNotIn("_pct", result)
+        self.assertNotIn("_ref", result)
+        self.assertNotIn("_resale_est", result)
 
-    def test_watchlist_fields_mapped_correctly(self):
-        picks = [self._make_pick()]
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
-            path = f.name
-        try:
-            _save_watchlist_to(picks, path)
-            with open(path) as f:
-                data = json.load(f)
-            p = data["picks"][0]
-            self.assertEqual(p["title"], "DeWalt Drill")
-            self.assertEqual(p["current_bid"], "$5.00")
-            self.assertEqual(p["est_resale"], "$80-$200 (brand: dewalt)")
-            self.assertEqual(p["closing_utc"], "2026-04-22 20:00:00 UTC")
-            self.assertEqual(p["auction_id"], "123")
-            self.assertEqual(p["auction_title"], "Wichita Tools Auction")
-            self.assertEqual(p["url"], "https://www.equip-bid.com/auction/123/item/456")
-        finally:
-            os.unlink(path)
+    def test_maps_resale_est_to_est_resale(self):
+        result = _clean_pick(self._make_scored_item())
+        self.assertEqual(result["est_resale"], "$80-$200 (brand: dewalt)")
 
-    def test_internal_scoring_keys_not_written(self):
-        pick = self._make_pick()
-        pick["_pct"] = 0.05
-        pick["_ref"] = 140.0
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
-            path = f.name
-        try:
-            _save_watchlist_to([pick], path)
-            with open(path) as f:
-                data = json.load(f)
-            p = data["picks"][0]
-            self.assertNotIn("_pct", p)
-            self.assertNotIn("_ref", p)
-            self.assertNotIn("_resale_est", p)
-        finally:
-            os.unlink(path)
+    def test_preserves_required_fields(self):
+        result = _clean_pick(self._make_scored_item())
+        self.assertEqual(result["title"], "DeWalt Drill Kit")
+        self.assertEqual(result["current_bid"], "$5.00")
+        self.assertEqual(result["auction_id"], "123")
+        self.assertEqual(result["auction_title"], "Wichita Tools")
+        self.assertEqual(result["closing_utc"], "2026-04-22 20:00:00 UTC")
+        self.assertEqual(result["url"], "https://www.equip-bid.com/auction/123/item/456")
 
-    def test_empty_picks_writes_valid_file(self):
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
-            path = f.name
-        try:
-            _save_watchlist_to([], path)
-            with open(path) as f:
-                data = json.load(f)
-            self.assertEqual(data["picks"], [])
-            self.assertIn("generated", data)
-        finally:
-            os.unlink(path)
+    def test_none_closing_utc_preserved(self):
+        item = self._make_scored_item()
+        item["closing_utc"] = None
+        result = _clean_pick(item)
+        self.assertIsNone(result["closing_utc"])
 
-    def test_none_closing_utc_written_as_null(self):
-        pick = self._make_pick(closing_utc=None)
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
-            path = f.name
-        try:
-            _save_watchlist_to([pick], path)
-            with open(path) as f:
-                data = json.load(f)
-            self.assertIsNone(data["picks"][0]["closing_utc"])
-        finally:
-            os.unlink(path)
+
+class TestIsTool(unittest.TestCase):
+
+    def test_dewalt_drill_is_tool(self):
+        item = {"title": "DeWalt 20V MAX Drill Driver Kit"}
+        self.assertTrue(_is_tool(item, ["dewalt", "drill", "milwaukee"]))
+
+    def test_tv_is_not_tool(self):
+        item = {"title": "Samsung 65 OLED TV"}
+        self.assertFalse(_is_tool(item, ["dewalt", "drill", "milwaukee"]))
+
+    def test_empty_tool_keywords_returns_false(self):
+        item = {"title": "DeWalt Drill"}
+        self.assertFalse(_is_tool(item, []))
+
+    def test_case_insensitive_match(self):
+        item = {"title": "DEWALT Impact Driver"}
+        self.assertTrue(_is_tool(item, ["dewalt"]))
 
 
 if __name__ == "__main__":
