@@ -6,7 +6,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from bs4 import BeautifulSoup
-from services.scout import _parse_closing_span, _clean_pick, _is_tool
+from services.scout import _parse_closing_span, _clean_pick, _is_tool, parse_dollar, extract_retail, lookup_brand, score_item
 
 
 def _make_span(title_attr=None, text="5 hours 30 min"):
@@ -112,6 +112,76 @@ class TestIsTool(unittest.TestCase):
     def test_case_insensitive_match(self):
         item = {"title": "DEWALT Impact Driver"}
         self.assertTrue(_is_tool(item, ["dewalt"]))
+
+
+class TestParseDollar(unittest.TestCase):
+
+    def test_dollar_sign_prefix(self):
+        self.assertAlmostEqual(parse_dollar("$5.00"), 5.0)
+
+    def test_no_dollar_sign(self):
+        self.assertAlmostEqual(parse_dollar("50"), 50.0)
+
+    def test_with_comma(self):
+        self.assertAlmostEqual(parse_dollar("$1,234.00"), 1234.0)
+
+    def test_empty_string_returns_zero(self):
+        self.assertAlmostEqual(parse_dollar(""), 0.0)
+
+
+class TestExtractRetail(unittest.TestCase):
+
+    def test_retails_for_pattern(self):
+        self.assertAlmostEqual(extract_retail("Retails for $150"), 150.0)
+
+    def test_msrp_pattern(self):
+        self.assertAlmostEqual(extract_retail("MSRP: $200"), 200.0)
+
+    def test_no_retail_returns_none(self):
+        self.assertIsNone(extract_retail("DeWalt 20V MAX Drill Driver Kit"))
+
+
+class TestLookupBrand(unittest.TestCase):
+
+    def test_known_brand(self):
+        lo, hi, brand = lookup_brand("DeWalt 20V MAX Drill Driver Kit")
+        self.assertEqual(brand, "dewalt")
+        self.assertGreater(lo, 0)
+        self.assertGreater(hi, lo)
+
+    def test_unknown_brand_returns_zeros(self):
+        lo, hi, brand = lookup_brand("Generic Widget from Store")
+        self.assertEqual(lo, 0.0)
+        self.assertEqual(hi, 0.0)
+        self.assertEqual(brand, "")
+
+    def test_case_insensitive(self):
+        lo, hi, brand = lookup_brand("MILWAUKEE Impact Driver")
+        self.assertEqual(brand, "milwaukee")
+
+
+class TestScoreItem(unittest.TestCase):
+
+    def _make_item(self, title="DeWalt 20V MAX Drill Driver Kit", bid="$5.00"):
+        return {"title": title, "current_bid": bid}
+
+    def test_known_brand_at_low_bid_scores_positive(self):
+        item = self._make_item()
+        self.assertGreater(score_item(item), 0.0)
+
+    def test_unknown_brand_scores_zero(self):
+        item = self._make_item(title="Generic Widget")
+        self.assertEqual(score_item(item), 0.0)
+
+    def test_bid_above_70pct_of_ref_scores_zero(self):
+        # DeWalt brand range is (80, 400), midpoint ref ~240. 75% of 240 = 180.
+        item = self._make_item(bid="$200.00")
+        self.assertEqual(score_item(item), 0.0)
+
+    def test_sets_resale_est_on_item(self):
+        item = self._make_item()
+        score_item(item)
+        self.assertIn("_resale_est", item)
 
 
 if __name__ == "__main__":

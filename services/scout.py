@@ -8,6 +8,7 @@ All per-user config (city, keywords) is passed as parameters — no hardcoded va
 import datetime
 import re
 import time
+from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
@@ -177,8 +178,7 @@ def _parse_closing_span(span) -> tuple[str, str | None]:
         return closing, raw
     try:
         dt = datetime.datetime.strptime(closing, _LOCAL_FMT)
-        local_tz = datetime.datetime.now().astimezone().tzinfo
-        dt_utc = dt.replace(tzinfo=local_tz).astimezone(datetime.timezone.utc)
+        dt_utc = dt.replace(tzinfo=ZoneInfo("America/Chicago")).astimezone(datetime.timezone.utc)
         return closing, dt_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
     except ValueError:
         return closing, None
@@ -310,6 +310,7 @@ def run_scout(
         return {"flips": [], "tools": []}
 
     all_items: list[dict] = []
+    error_count = 0
     for a in auctions:
         try:
             items = get_auction_items(a["id"], a["closing"], interest_keywords, a.get("closing_utc"))
@@ -318,8 +319,9 @@ def run_scout(
                 item["auction_title"] = a["title"]
             all_items.extend(items)
             time.sleep(0.5)
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[WARN] Skipping auction {a['id']}: {exc}")
+            error_count += 1
 
     scored = []
     for item in all_items:
@@ -334,4 +336,5 @@ def run_scout(
     return {
         "flips": [_clean_pick(it) for _, it in flip_scored[:TOP_FLIPS]],
         "tools": [_clean_pick(it) for _, it in tool_scored[:TOP_TOOLS]],
+        "errors": error_count,
     }
