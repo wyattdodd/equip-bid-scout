@@ -21,7 +21,6 @@ HEADERS = {
 _UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$")
 _LOCAL_FMT = "%m/%d/%Y %I:%M %p"
 
-MAX_AUCTIONS = 10
 TOP_PICKS = 10
 MIN_RESALE_VALUE = 75.0
 
@@ -151,55 +150,78 @@ def _clean_pick(p: dict) -> dict:
 
 
 def get_nearby_auctions(city_filter: list[str]) -> list[dict]:
-    resp = requests.get(f"{BASE_URL}/auction/list", headers=HEADERS, timeout=15)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-
     auctions = []
-    for title_span in soup.select("span.auction-title.description-wrap-fix"):
-        link = title_span.find("a")
-        if not link:
-            continue
-        href = link.get("href", "")
-        title = link.get_text(strip=True)
+    seen_ids: set[str] = set()
+    page = 1
 
-        row = title_span
-        for _ in range(6):
-            row = row.parent
-            if row and "row" in (row.get("class") or []):
-                break
+    while page <= 20:
+        params = {"page": page} if page > 1 else None
+        resp = requests.get(f"{BASE_URL}/auction/list", headers=HEADERS, timeout=15, params=params)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
 
-        location_text = ""
-        for i_tag in row.find_all("i"):
-            if "globe" in " ".join(i_tag.get("class") or []):
-                location_text = i_tag.parent.get_text(strip=True)
-                break
+        found_on_page = 0
+        for title_span in soup.select("span.auction-title.description-wrap-fix"):
+            link = title_span.find("a")
+            if not link:
+                continue
+            href = link.get("href", "")
+            title = link.get_text(strip=True)
 
-        closing = "Unknown"
-        closing_utc = None
-        timer_div = row.find("div", class_="auction-listing-timer")
-        if timer_div:
-            span = timer_div.find("span", title=lambda t: t and "UTC" in t)
-            if span:
-                closing, closing_utc = _parse_closing_span(span)
+            m = re.search(r"/auction/(\d+)", href)
+            if not m or m.group(1) in seen_ids:
+                continue
 
-        if not any(kw in location_text.lower() for kw in city_filter):
-            continue
+            row = title_span
+            for _ in range(6):
+                row = row.parent
+                if row and "row" in (row.get("class") or []):
+                    break
 
-        m = re.search(r"/auction/(\d+)", href)
-        if not m:
-            continue
+            location_text = ""
+            for i_tag in row.find_all("i"):
+                if "globe" in " ".join(i_tag.get("class") or []):
+                    location_text = i_tag.parent.get_text(strip=True)
+                    break
 
-        auctions.append({
-            "id": m.group(1),
-            "title": title[:90],
-            "location": location_text,
-            "closing": closing,
-            "closing_utc": closing_utc,
-            "url": f"{BASE_URL}{href}",
-        })
+            if not any(kw in location_text.lower() for kw in city_filter):
+                continue
 
-    return auctions[:MAX_AUCTIONS]
+            closing = "Unknown"
+            closing_utc = None
+            timer_div = row.find("div", class_="auction-listing-timer")
+            if timer_div:
+                span = timer_div.find("span", title=lambda t: t and "UTC" in t)
+                if span:
+                    closing, closing_utc = _parse_closing_span(span)
+
+            auction_id = m.group(1)
+            seen_ids.add(auction_id)
+            found_on_page += 1
+            auctions.append({
+                "id": auction_id,
+                "title": title[:90],
+                "location": location_text,
+                "closing": closing,
+                "closing_utc": closing_utc,
+                "url": f"{BASE_URL}{href}",
+            })
+
+        if found_on_page == 0:
+            break
+
+        next_link = (
+            soup.select_one("a[rel='next']")
+            or soup.select_one("li.next:not(.disabled) a")
+            or soup.select_one(".pagination a[aria-label='Next']")
+        )
+        if not next_link:
+            break
+
+        page += 1
+        time.sleep(0.3)
+
+    return auctions
 
 
 def get_auction_items(
@@ -209,41 +231,61 @@ def get_auction_items(
     reject_phrases: list[str],
     auction_closing_utc: str | None = None,
 ) -> list[dict]:
-    resp = requests.get(
-        f"{BASE_URL}/auction/{auction_id}", headers=HEADERS, timeout=20
-    )
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-
     items = []
-    for h4 in soup.find_all("h4", id=lambda x: x and x.startswith("itemTitle")):
-        link = h4.find("a")
-        if not link:
-            continue
+    page = 1
 
-        title = link.get_text(strip=True)
-        href = link.get("href", "")
-        title_lower = title.lower()
-
-        if not any(kw in title_lower for kw in interest_keywords):
-            continue
-        if any(phrase in title_lower for phrase in reject_phrases):
-            continue
-
-        internal_id = h4["id"].replace("itemTitle", "")
-        bid_span = soup.find(
-            "span",
-            id=f"lot_current_bid_lot_equip-bid_{auction_id}_{internal_id}",
+    while page <= 20:
+        params = {"page": page} if page > 1 else None
+        resp = requests.get(
+            f"{BASE_URL}/auction/{auction_id}", headers=HEADERS, timeout=20, params=params
         )
-        bid = bid_span.get_text(strip=True) if bid_span else "$0.00"
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
 
-        items.append({
-            "title": title,
-            "current_bid": bid,
-            "closing": auction_closing,
-            "closing_utc": auction_closing_utc,
-            "url": f"{BASE_URL}{href.split('?')[0]}",
-        })
+        found_on_page = 0
+        for h4 in soup.find_all("h4", id=lambda x: x and x.startswith("itemTitle")):
+            link = h4.find("a")
+            if not link:
+                continue
+
+            title = link.get_text(strip=True)
+            href = link.get("href", "")
+            title_lower = title.lower()
+
+            if not any(kw in title_lower for kw in interest_keywords):
+                continue
+            if any(phrase in title_lower for phrase in reject_phrases):
+                continue
+
+            internal_id = h4["id"].replace("itemTitle", "")
+            bid_span = soup.find(
+                "span",
+                id=f"lot_current_bid_lot_equip-bid_{auction_id}_{internal_id}",
+            )
+            bid = bid_span.get_text(strip=True) if bid_span else "$0.00"
+
+            items.append({
+                "title": title,
+                "current_bid": bid,
+                "closing": auction_closing,
+                "closing_utc": auction_closing_utc,
+                "url": f"{BASE_URL}{href.split('?')[0]}",
+            })
+            found_on_page += 1
+
+        if found_on_page == 0:
+            break
+
+        next_link = (
+            soup.select_one("a[rel='next']")
+            or soup.select_one("li.next:not(.disabled) a")
+            or soup.select_one(".pagination a[aria-label='Next']")
+        )
+        if not next_link:
+            break
+
+        page += 1
+        time.sleep(0.3)
 
     return items
 

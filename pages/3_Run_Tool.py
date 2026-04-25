@@ -36,13 +36,13 @@ with st.container(border=True):
 st.caption(f"ntfy topic: **{settings['ntfy_topic']}**")
 
 st.info(
-    "The scout fetches up to 10 auctions near your city, filters items by your keywords, "
-    "removes anything matching your reject phrases, and returns the 10 highest estimated-value items. "
-    "Takes 30–60 seconds."
+    "The scout fetches **all** auctions near your city and paginates through every item in each one. "
+    "Items are filtered by your keywords, reject phrases removed, and the 10 highest estimated-value results returned. "
+    "Typically takes 1–2 minutes depending on how many auctions are active."
 )
 
 if st.button("Run Scout", type="primary", use_container_width=True):
-    with st.spinner("Scanning equip-bid.com..."):
+    with st.spinner("Scanning equip-bid.com — fetching all auctions and paginating through items, may take 1–2 minutes..."):
         try:
             results = run_scout(
                 city_filter=[settings.get("city", "")],
