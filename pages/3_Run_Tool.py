@@ -35,52 +35,39 @@ if st.button("Run Scout", type="primary"):
             results = run_scout(
                 city_filter=[settings.get("city", "")],
                 interest_keywords=settings["interest_keywords"],
-                tool_keywords=settings.get("tool_keywords") or [],
+                reject_phrases=settings.get("reject_phrases") or [],
             )
         except Exception as e:
             st.error(f"Scout failed: {e}")
             st.stop()
 
-    flips = results.get("flips", [])
-    tools = results.get("tools", [])
+    picks = results.get("picks", [])
     if results.get("errors"):
         st.warning(f"{results['errors']} auction(s) failed to scrape and were skipped.")
 
-    with st.expander(f"Flips — {len(flips)} found", expanded=True):
-        if not flips:
-            st.write("No flip candidates found this run.")
-        for p in flips:
-            st.markdown(f"**{p['title'][:80]}**")
-            st.markdown(
-                f"Bid: `{p['current_bid']}` &nbsp;|&nbsp; Est: `{p['est_resale']}` &nbsp;|&nbsp; Closes: {p['closing']}"
-            )
-            st.markdown(f"[View item →]({p['url']})")
-            st.divider()
-
-    with st.expander(f"Tools — {len(tools)} found", expanded=True):
-        if not tools:
-            st.write("No tool picks found this run.")
-        for p in tools:
-            st.markdown(f"**{p['title'][:80]}**")
-            st.markdown(
-                f"Bid: `{p['current_bid']}` &nbsp;|&nbsp; Est: `{p['est_resale']}` &nbsp;|&nbsp; Closes: {p['closing']}"
-            )
-            st.markdown(f"[View item →]({p['url']})")
-            st.divider()
+    st.subheader(f"Top Picks — {len(picks)} found")
+    if not picks:
+        st.write("No results found this run. Try broadening your interest keywords.")
+    for p in picks:
+        st.markdown(f"**{p['title'][:80]}**")
+        st.markdown(
+            f"Bid: `{p['current_bid']}` &nbsp;|&nbsp; Est: `{p['est_resale']}` &nbsp;|&nbsp; Closes: {p['closing']}"
+        )
+        st.markdown(f"[View item →]({p['url']})")
+        st.divider()
 
     client.table("watchlist_runs").insert({
         "user_id": user_id,
-        "flips": flips,
-        "tools": tools,
-    }).execute()  # result not critical — UI still shows results even if history write fails
+        "flips": picks,
+        "tools": [],
+    }).execute()
 
     count = schedule_notifications(
         client,
         user_id,
         settings["ntfy_topic"],
         settings.get("notify_minutes") or 30,
-        flips,
-        tools,
+        picks,
     )
 
     st.success(f"Run complete. {count} auction notification(s) scheduled.")

@@ -9,9 +9,8 @@ def _parse_closing_utc(utc_str: str | None) -> datetime | None:
     try:
         clean = utc_str.replace(" UTC", "").strip()
         dt = datetime.strptime(clean, "%Y-%m-%d %H:%M:%S")
-        # tzinfo=timezone.utc is required — isoformat() must produce "+00:00" for Supabase timestamptz
         return dt.replace(tzinfo=timezone.utc)
-    except ValueError:
+    except Exception:
         return None
 
 
@@ -34,15 +33,13 @@ def schedule_notifications(
     user_id: str,
     ntfy_topic: str,
     notify_minutes: int,
-    flips: list[dict],
-    tools: list[dict],
+    picks: list[dict],
 ) -> int:
-    all_picks = flips + tools
-    if not all_picks:
+    if not picks:
         return 0
 
     auctions: dict[str, list[dict]] = {}
-    for pick in all_picks:
+    for pick in picks:
         aid = pick.get("auction_id", "")
         if aid:
             auctions.setdefault(aid, []).append(pick)
@@ -50,8 +47,8 @@ def schedule_notifications(
     now = datetime.now(timezone.utc)
     rows = []
 
-    for auction_id, picks in auctions.items():
-        closing_dt = _parse_closing_utc(picks[0].get("closing_utc"))
+    for auction_id, auction_picks in auctions.items():
+        closing_dt = _parse_closing_utc(auction_picks[0].get("closing_utc"))
         if not closing_dt:
             continue
         notify_at = closing_dt - timedelta(minutes=notify_minutes)
@@ -61,7 +58,7 @@ def schedule_notifications(
         rows.append({
             "user_id": user_id,
             "auction_id": auction_id,
-            "auction_title": picks[0].get("auction_title", ""),
+            "auction_title": auction_picks[0].get("auction_title", ""),
             "ntfy_topic": ntfy_topic,
             "notify_at": notify_at.isoformat(),
             "items": [
@@ -72,7 +69,7 @@ def schedule_notifications(
                     "url": p.get("url", ""),
                     "auction_title": p.get("auction_title", ""),
                 }
-                for p in picks
+                for p in auction_picks
             ],
         })
 

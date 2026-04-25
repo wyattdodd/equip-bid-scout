@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 services/scout.py
-Scrapes equip-bid.com and scores items by arbitrage potential.
-All per-user config (city, keywords) is passed as parameters — no hardcoded values.
+Scrapes equip-bid.com and returns the top items by estimated retail value.
+All per-user config (city, keywords, reject phrases) is passed as parameters.
 """
 
 import datetime
@@ -22,32 +22,8 @@ _UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$")
 _LOCAL_FMT = "%m/%d/%Y %I:%M %p"
 
 MAX_AUCTIONS = 10
-TOP_FLIPS = 5
-TOP_TOOLS = 5
+TOP_PICKS = 10
 MIN_RESALE_VALUE = 75.0
-
-EXCLUSION_PHRASES = [
-    "case for", "case compatible", "compatible with", "replacement for",
-    "adapter for", "charger for", "screen protector", "tempered glass",
-    "silicone case", "phone case", "tablet case",
-    "carrying case", "travel case", "hard case", "protective case",
-    "cover for", "stand for", "holder for", "mount for",
-    "laptop case", "laptop bag", "laptop backpack", "laptop sleeve",
-    "laptop stand", "laptop riser", "laptop desk",
-    "couch cover", "sofa cover", "chair cover", "sectional cover",
-    "slipcover", "slip cover", "furniture cover", "cushion cover",
-    "cushion replacement", "upholstery foam",
-    "backup camera", "rear camera", "reverse camera", "dash cam",
-    "baby camera", "baby monitor", "car camera", "parking camera",
-    "camera strap", "camera bag", "lens cap",
-    "headphone stand", "speaker stand", "earbud tips",
-    "actuator", "rmt motor", "lift motor",
-    "replacement legs", "furniture legs", "sofa legs", "couch legs",
-    "rv seat", "seat cover", "outdoor cushion", "chair cushion",
-    "patio cushion", "cushion set", "cushion replacement",
-    "missing", "parts only", "for parts", "not working", "as is",
-    "damaged", "cracked screen",
-]
 
 BRAND_VALUE = {
     "dewalt":               (80,   400),
@@ -133,42 +109,19 @@ def lookup_brand(title: str) -> tuple[float, float, str]:
     return 0.0, 0.0, ""
 
 
-def score_item(item: dict) -> float:
-    bid = parse_dollar(item["current_bid"])
+def _get_ref(item: dict) -> float:
+    """Compute estimated retail value; sets item['_resale_est'] as a side effect."""
     title = item["title"]
-
     retail = extract_retail(title)
-    lo_resale, hi_resale, brand = lookup_brand(title)
-
-    if retail and retail > 0:
-        if retail < MIN_RESALE_VALUE:
-            return 0.0
-        ref = retail
+    if retail and retail >= MIN_RESALE_VALUE:
         item["_resale_est"] = f"~${retail:.0f} (stated retail)"
-    elif lo_resale > 0:
-        ref = (lo_resale + hi_resale) / 2
-        item["_resale_est"] = f"${lo_resale:.0f}-${hi_resale:.0f} (brand: {brand})"
-    else:
-        return 0.0
-
-    if ref < MIN_RESALE_VALUE:
-        return 0.0
-
-    effective_bid = bid if bid > 0 else 1.0
-    pct = effective_bid / ref
-    item["_pct"] = pct
-    item["_ref"] = ref
-
-    if pct >= 0.70:
-        return 0.0
-
-    base = (1.0 - pct) * 100
-    if bid == 0:
-        base += 25
-    if pct < 0.20:
-        base += 20
-
-    return base
+        return retail
+    lo, hi, brand = lookup_brand(title)
+    if lo > 0:
+        ref = (lo + hi) / 2
+        item["_resale_est"] = f"${lo:.0f}-${hi:.0f} (brand: {brand})"
+        return ref
+    return 0.0
 
 
 def _parse_closing_span(span) -> tuple[str, str | None]:
@@ -195,11 +148,6 @@ def _clean_pick(p: dict) -> dict:
         "auction_id":    p.get("auction_id", ""),
         "auction_title": p.get("auction_title", ""),
     }
-
-
-def _is_tool(item: dict, tool_keywords: list[str]) -> bool:
-    t = item["title"].lower()
-    return any(kw in t for kw in tool_keywords)
 
 
 def get_nearby_auctions(city_filter: list[str]) -> list[dict]:
@@ -258,6 +206,7 @@ def get_auction_items(
     auction_id: str,
     auction_closing: str,
     interest_keywords: list[str],
+    reject_phrases: list[str],
     auction_closing_utc: str | None = None,
 ) -> list[dict]:
     resp = requests.get(
@@ -278,7 +227,7 @@ def get_auction_items(
 
         if not any(kw in title_lower for kw in interest_keywords):
             continue
-        if any(ex in title_lower for ex in EXCLUSION_PHRASES):
+        if any(phrase in title_lower for phrase in reject_phrases):
             continue
 
         internal_id = h4["id"].replace("itemTitle", "")
@@ -302,18 +251,20 @@ def get_auction_items(
 def run_scout(
     city_filter: list[str],
     interest_keywords: list[str],
-    tool_keywords: list[str],
+    reject_phrases: list[str],
 ) -> dict:
-    """Scrape and score equip-bid.com using per-user config. Returns {"flips": [...], "tools": [...]}."""
+    """Scrape equip-bid.com and return the top 10 items by estimated retail value."""
     auctions = get_nearby_auctions(city_filter)
     if not auctions:
-        return {"flips": [], "tools": []}
+        return {"picks": [], "errors": 0}
 
     all_items: list[dict] = []
     error_count = 0
     for a in auctions:
         try:
-            items = get_auction_items(a["id"], a["closing"], interest_keywords, a.get("closing_utc"))
+            items = get_auction_items(
+                a["id"], a["closing"], interest_keywords, reject_phrases, a.get("closing_utc")
+            )
             for item in items:
                 item["auction_id"] = a["id"]
                 item["auction_title"] = a["title"]
@@ -323,18 +274,14 @@ def run_scout(
             print(f"[WARN] Skipping auction {a['id']}: {exc}")
             error_count += 1
 
-    scored = []
+    valued = []
     for item in all_items:
-        s = score_item(item)
-        if s > 0:
-            scored.append((s, item))
-    scored.sort(key=lambda x: x[0], reverse=True)
-
-    tool_scored = [(s, it) for s, it in scored if _is_tool(it, tool_keywords)]
-    flip_scored = [(s, it) for s, it in scored if not _is_tool(it, tool_keywords)]
+        ref = _get_ref(item)
+        if ref >= MIN_RESALE_VALUE:
+            valued.append((ref, item))
+    valued.sort(key=lambda x: x[0], reverse=True)
 
     return {
-        "flips": [_clean_pick(it) for _, it in flip_scored[:TOP_FLIPS]],
-        "tools": [_clean_pick(it) for _, it in tool_scored[:TOP_TOOLS]],
+        "picks": [_clean_pick(it) for _, it in valued[:TOP_PICKS]],
         "errors": error_count,
     }
