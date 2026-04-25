@@ -13,19 +13,8 @@ from datetime import datetime, timezone
 import requests
 from supabase import create_client
 
-BASE_URL = "https://www.equip-bid.com"
-
-
-def build_ntfy_body(auction_id: str, items: list[dict]) -> str:
-    auction_title = items[0].get("auction_title", f"Auction {auction_id}") if items else f"Auction {auction_id}"
-    lines = [f"Auction: {auction_title}"]
-    for item in items:
-        title = item.get("title", "")[:60]
-        bid = item.get("current_bid", "?")
-        resale = item.get("est_resale", "?")
-        lines.append(f"• {title}  |  Bid: {bid}  |  Est: {resale}")
-    lines.append(f"{BASE_URL}/auction/{auction_id}")
-    return "\n".join(lines)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from services.notifications import build_ntfy_body
 
 
 def post_ntfy(topic: str, body: str) -> None:
@@ -80,9 +69,9 @@ def main() -> None:
 
     if notified_ids:
         sent_at = datetime.now(timezone.utc).isoformat()
-        supabase.table("scheduled_notifications")\
-            .update({"notified": True, "notified_at": sent_at})\
-            .in_("id", notified_ids)\
+        supabase.table("scheduled_notifications") \
+            .update({"notified": True, "notified_at": sent_at}) \
+            .in_("id", notified_ids) \
             .execute()
 
     print(f"\n{len(notified_ids)}/{len(rows)} notification(s) sent.")

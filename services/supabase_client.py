@@ -1,14 +1,13 @@
-"""
-services/supabase_client.py
-Supabase client factory and authentication guard for use by all Streamlit pages.
-"""
-
 import streamlit as st
 from supabase import create_client, Client
 
 
 def get_client() -> Client:
-    client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    if "supabase_client" not in st.session_state:
+        st.session_state.supabase_client = create_client(
+            st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
+        )
+    client = st.session_state.supabase_client
     access_token = st.session_state.get("access_token")
     refresh_token = st.session_state.get("refresh_token")
     if access_token and refresh_token:
