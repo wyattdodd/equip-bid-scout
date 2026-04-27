@@ -26,7 +26,25 @@ MIN_RESALE_VALUE = 75.0
 # Items with a stated retail but NO recognizable brand need a higher bar —
 # this blocks cheap junk (baby gates, phone holsters) that auction descriptions
 # price up with unrealistic MSRPs.
-MIN_STATED_RETAIL_NO_BRAND = 150.0
+MIN_STATED_RETAIL_NO_BRAND = 250.0
+
+# Always-reject phrases applied in code before user reject phrases.
+# These cover categories that are never good tool/electronics flips regardless
+# of stated price, and can't accidentally be removed from user settings.
+ALWAYS_REJECT = {
+    "baby gate", "baby monitor", "baby swing", "baby bouncer", "baby carrier",
+    "baby seat", "infant seat", "stroller", "pack n play", "pack-n-play",
+    "dog collar", "dog leash", "cat litter", "pet bed", "pet crate",
+    "bird cage", "fish tank", "aquarium", "litter box",
+    "holster", "belt clip", "phone pouch", "phone armband",
+    "yoga mat", "resistance band", "jump rope", "foam roller",
+    "hair dryer", "hair straightener", "curling iron", "curling wand",
+    "action figure", "barbie", "building blocks",
+}
+
+_ACCESSORY_FOR_RE = re.compile(
+    r"\b(for|fits|compatible with|designed for)\s", re.IGNORECASE
+)
 
 BRAND_VALUE = {
     "dewalt":               (80,   400),
@@ -107,8 +125,15 @@ def extract_retail(title: str) -> float | None:
 def lookup_brand(title: str) -> tuple[float, float, str]:
     t = title.lower()
     for brand, (lo, hi) in BRAND_VALUE.items():
-        if brand in t:
-            return lo, hi, brand
+        idx = t.find(brand)
+        if idx == -1:
+            continue
+        # Skip if the brand appears after an accessory preposition — the item
+        # is an accessory FOR the brand, not the brand itself.
+        preceding = t[max(0, idx - 20):idx]
+        if _ACCESSORY_FOR_RE.search(preceding):
+            continue
+        return lo, hi, brand
     return 0.0, 0.0, ""
 
 
@@ -259,6 +284,8 @@ def get_auction_items(
             title_lower = title.lower()
 
             if not any(kw in title_lower for kw in interest_keywords):
+                continue
+            if any(phrase in title_lower for phrase in ALWAYS_REJECT):
                 continue
             if any(phrase in title_lower for phrase in reject_phrases):
                 continue
