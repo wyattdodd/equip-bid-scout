@@ -22,7 +22,7 @@ def post_ntfy(topic: str, body: str) -> None:
         f"https://ntfy.sh/{topic}",
         data=body.encode("utf-8"),
         headers={
-            "Title": "⏰ Equip-Bid — closing soon",
+            "Title": "Equip-Bid - closing soon",
             "Priority": "high",
             "Tags": "bell",
         },
