@@ -22,6 +22,23 @@ DEFAULT_REJECT_PHRASES = [
     "patio cushion", "cushion set",
     "missing", "parts only", "for parts", "not working", "as is",
     "damaged", "cracked screen",
+    # Baby / infant
+    "baby gate", "baby monitor", "baby swing", "baby bouncer", "baby carrier",
+    "baby seat", "infant", "toddler", "stroller", "car seat", "pack n play",
+    "diaper", "wipes",
+    # Pets
+    "dog", "cat", "puppy", "kitten", "pet bed", "pet crate", "bird cage",
+    "fish tank", "aquarium", "litter box",
+    # Phone/tablet accessories
+    "holster", "belt clip", "phone pouch", "armband", "wrist strap",
+    # Personal care junk
+    "hair dryer", "hair straightener", "curling iron", "curling wand",
+    "electric shaver", "epilator",
+    # Toys / kids (not gaming)
+    "action figure", "barbie", "lego set", "building blocks", "toy car",
+    "board game", "puzzle",
+    # Fitness accessories
+    "yoga mat", "resistance band", "jump rope", "foam roller", "exercise band",
 ]
 
 st.set_page_config(page_title="Settings — Equip-Bid Scout")

@@ -23,6 +23,10 @@ _LOCAL_FMT = "%m/%d/%Y %I:%M %p"
 
 TOP_PICKS = 10
 MIN_RESALE_VALUE = 75.0
+# Items with a stated retail but NO recognizable brand need a higher bar —
+# this blocks cheap junk (baby gates, phone holsters) that auction descriptions
+# price up with unrealistic MSRPs.
+MIN_STATED_RETAIL_NO_BRAND = 150.0
 
 BRAND_VALUE = {
     "dewalt":               (80,   400),
@@ -112,10 +116,12 @@ def _get_ref(item: dict) -> float:
     """Compute estimated retail value; sets item['_resale_est'] as a side effect."""
     title = item["title"]
     retail = extract_retail(title)
-    if retail and retail >= MIN_RESALE_VALUE:
-        item["_resale_est"] = f"~${retail:.0f} (stated retail)"
-        return retail
     lo, hi, brand = lookup_brand(title)
+    if retail:
+        threshold = MIN_RESALE_VALUE if brand else MIN_STATED_RETAIL_NO_BRAND
+        if retail >= threshold:
+            item["_resale_est"] = f"~${retail:.0f} (stated retail)"
+            return retail
     if lo > 0:
         ref = (lo + hi) / 2
         item["_resale_est"] = f"${lo:.0f}-${hi:.0f} (brand: {brand})"
